@@ -1,0 +1,59 @@
+version: '3.8'
+
+services:
+  glidewars:
+    build:
+      context: .
+      dockerfile: Dockerfile
+    container_name: glidewars
+    ports:
+      - "8080:80"
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD", "wget", "--quiet", "--tries=1", "--spider", "http://localhost/health"]
+      interval: 30s
+      timeout: 5s
+      retries: 3
+      start_period: 10s
+    networks:
+      - glidewars-network
+
+  # Optional: Backend API service (for future use with session tracking)
+  # api:
+  #   build:
+  #     context: ./backend
+  #     dockerfile: Dockerfile
+  #   container_name: glidewars-api
+  #   ports:
+  #     - "8081:8080"
+  #   environment:
+  #     - DATABASE_URL=postgresql://user:password@db:5432/glidewars
+  #     - RUST_LOG=info
+  #   depends_on:
+  #     - db
+  #   restart: unless-stopped
+  #   networks:
+  #     - glidewars-network
+
+  # Optional: Database for leaderboards and session tracking
+  # db:
+  #   image: postgres:15-alpine
+  #   container_name: glidewars-db
+  #   environment:
+  #     - POSTGRES_USER=user
+  #     - POSTGRES_PASSWORD=password
+  #     - POSTGRES_DB=glidewars
+  #   volumes:
+  #     - postgres-data:/var/lib/postgresql/data
+  #   ports:
+  #     - "5432:5432"
+  #   restart: unless-stopped
+  #   networks:
+  #     - glidewars-network
+
+networks:
+  glidewars-network:
+    driver: bridge
+
+# volumes:
+#   postgres-data:

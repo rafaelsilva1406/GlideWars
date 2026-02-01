@@ -12,6 +12,7 @@ mod assets;
 mod level;
 mod checkpoint;
 mod boss;
+mod ui;
 
 use player::Player;
 use terrain::TerrainManager;
@@ -25,6 +26,7 @@ use assets::{AssetManager, Continent};
 use level::LevelManager;
 use checkpoint::CheckpointManager;
 use boss::{Boss, BossType};
+use ui::{SplashScreen, MainMenu, OptionsMenu, LevelSelectScreen};
 
 #[macroquad::main("Glide Wars")]
 async fn main() {
@@ -40,6 +42,12 @@ async fn main() {
     let mut camera = GameCamera::new();
 
     // Level management
+    // UI screens
+    let mut splash_screen = SplashScreen::new();
+    let mut main_menu = MainMenu::new();
+    let mut options_menu = OptionsMenu::new();
+    let mut level_select_screen = LevelSelectScreen::new();
+
     let mut level_manager: Option<LevelManager> = None;
     let mut checkpoint_manager = CheckpointManager::new();
     let mut boss: Option<Boss> = None;
@@ -64,19 +72,64 @@ async fn main() {
         // Handle states
         match scene_manager.current_state() {
             GameState::Splash => {
-                draw_splash_screen();
+                splash_screen.update(dt);
+                splash_screen.draw();
+
+                // Skip on any key press
+                if is_key_pressed(KeyCode::Space) || is_key_pressed(KeyCode::Enter) {
+                    splash_screen.skip();
+                }
+
+                if splash_screen.is_completed() {
+                    scene_manager.request_transition(GameState::MainMenu);
+                }
             }
 
             GameState::MainMenu => {
-                draw_main_menu(&input, &mut scene_manager);
+                let action = main_menu.update(dt);
+                main_menu.draw();
+
+                match action {
+                    ui::main_menu::MenuAction::Start => {
+                        scene_manager.request_transition(GameState::LevelSelect);
+                    }
+                    ui::main_menu::MenuAction::Options => {
+                        scene_manager.request_transition(GameState::Options);
+                    }
+                    _ => {}
+                }
             }
 
             GameState::Options => {
-                draw_options_menu(&input, &mut scene_manager);
+                let action = options_menu.update(dt);
+                options_menu.draw();
+
+                match action {
+                    ui::options::OptionsAction::Back => {
+                        scene_manager.request_transition(GameState::MainMenu);
+                    }
+                    _ => {}
+                }
             }
 
             GameState::LevelSelect => {
-                draw_level_select(&input, &mut scene_manager);
+                let action = level_select_screen.update(dt);
+                level_select_screen.draw();
+
+                match action {
+                    ui::level_select::LevelSelectAction::StartLevel(continent) => {
+                        current_continent = continent;
+                        if continent == Continent::Tutorial {
+                            scene_manager.request_transition(GameState::Tutorial);
+                        } else {
+                            scene_manager.request_transition(GameState::InGame);
+                        }
+                    }
+                    ui::level_select::LevelSelectAction::Back => {
+                        scene_manager.request_transition(GameState::MainMenu);
+                    }
+                    _ => {}
+                }
             }
 
             GameState::Tutorial | GameState::InGame => {
@@ -237,9 +290,13 @@ async fn main() {
                     // Respawn ready
                     checkpoint_manager.restore_player_state(&mut player, &mut scene_manager.scene_data_mut().score);
 
-                    // Reset terrain to checkpoint position
+                    // Reset terrain to checkpoint position and clear around player
                     if let Some(checkpoint_pos) = checkpoint_manager.get_last_checkpoint_position() {
                         terrain.reset_to_position(checkpoint_pos);
+                        // Clear obstacles and enemies in a safe radius around spawn point
+                        let clear_radius = 25.0; // Safe zone radius
+                        terrain.clear_around_position(player.position(), clear_radius);
+                        enemies.clear_around_position(player.position(), clear_radius);
                     }
 
                     // Go back to appropriate state
@@ -257,9 +314,13 @@ async fn main() {
                     checkpoint_manager.cancel_respawn();
                     checkpoint_manager.restore_player_state(&mut player, &mut scene_manager.scene_data_mut().score);
 
-                    // Reset terrain to checkpoint position
+                    // Reset terrain to checkpoint position and clear around player
                     if let Some(checkpoint_pos) = checkpoint_manager.get_last_checkpoint_position() {
                         terrain.reset_to_position(checkpoint_pos);
+                        // Clear obstacles and enemies in a safe radius around spawn point
+                        let clear_radius = 25.0; // Safe zone radius
+                        terrain.clear_around_position(player.position(), clear_radius);
+                        enemies.clear_around_position(player.position(), clear_radius);
                     }
 
                     if boss.is_some() && !boss.as_ref().unwrap().is_defeated() {
@@ -482,183 +543,6 @@ fn draw_boss_health_bar(boss: &Boss) {
     );
 }
 
-fn draw_splash_screen() {
-    let screen_width = screen_width();
-    let screen_height = screen_height();
-
-    // Draw title
-    let title_text = "GLIDE WARS";
-    let text_width = measure_text(title_text, None, 80, 1.0).width;
-    draw_text(
-        title_text,
-        screen_width / 2.0 - text_width / 2.0,
-        screen_height / 2.0 - 40.0,
-        80.0,
-        Color::from_rgba(0, 255, 255, 255)
-    );
-
-    // Loading text
-    let loading_text = "LOADING...";
-    let loading_width = measure_text(loading_text, None, 30, 1.0).width;
-    draw_text(
-        loading_text,
-        screen_width / 2.0 - loading_width / 2.0,
-        screen_height / 2.0 + 60.0,
-        30.0,
-        Color::from_rgba(255, 255, 255, 255)
-    );
-}
-
-fn draw_main_menu(input: &input_manager::InputState, scene_manager: &mut SceneManager) {
-    let screen_width = screen_width();
-    let screen_height = screen_height();
-
-    // Title
-    let title_text = "GLIDE WARS";
-    let text_width = measure_text(title_text, None, 60, 1.0).width;
-    draw_text(
-        title_text,
-        screen_width / 2.0 - text_width / 2.0,
-        screen_height / 3.0,
-        60.0,
-        Color::from_rgba(0, 255, 255, 255)
-    );
-
-    // Menu options
-    let start_text = "START - Press SPACE/Enter";
-    let start_width = measure_text(start_text, None, 30, 1.0).width;
-    draw_text(
-        start_text,
-        screen_width / 2.0 - start_width / 2.0,
-        screen_height / 2.0,
-        30.0,
-        Color::from_rgba(255, 255, 255, 255)
-    );
-
-    let options_text = "OPTIONS - Press O";
-    let options_width = measure_text(options_text, None, 30, 1.0).width;
-    draw_text(
-        options_text,
-        screen_width / 2.0 - options_width / 2.0,
-        screen_height / 2.0 + 50.0,
-        30.0,
-        Color::from_rgba(200, 200, 200, 255)
-    );
-
-    // Handle input
-    if input.confirm || is_key_pressed(KeyCode::Space) || is_key_pressed(KeyCode::Enter) {
-        scene_manager.request_transition(GameState::LevelSelect);
-    }
-
-    if is_key_pressed(KeyCode::O) {
-        scene_manager.request_transition(GameState::Options);
-    }
-}
-
-fn draw_options_menu(input: &input_manager::InputState, scene_manager: &mut SceneManager) {
-    let screen_width = screen_width();
-    let screen_height = screen_height();
-
-    // Title
-    let title_text = "OPTIONS";
-    let text_width = measure_text(title_text, None, 50, 1.0).width;
-    draw_text(
-        title_text,
-        screen_width / 2.0 - text_width / 2.0,
-        screen_height / 3.0,
-        50.0,
-        Color::from_rgba(0, 255, 255, 255)
-    );
-
-    // Placeholder
-    let placeholder = "Options menu - Coming in Phase 3";
-    let placeholder_width = measure_text(placeholder, None, 25, 1.0).width;
-    draw_text(
-        placeholder,
-        screen_width / 2.0 - placeholder_width / 2.0,
-        screen_height / 2.0,
-        25.0,
-        Color::from_rgba(200, 200, 200, 255)
-    );
-
-    let back_text = "PRESS ESC TO GO BACK";
-    let back_width = measure_text(back_text, None, 20, 1.0).width;
-    draw_text(
-        back_text,
-        screen_width / 2.0 - back_width / 2.0,
-        screen_height / 2.0 + 100.0,
-        20.0,
-        Color::from_rgba(255, 255, 255, 255)
-    );
-
-    // Handle input
-    if input.back {
-        scene_manager.request_transition(GameState::MainMenu);
-    }
-}
-
-fn draw_level_select(input: &input_manager::InputState, scene_manager: &mut SceneManager) {
-    let screen_width = screen_width();
-    let screen_height = screen_height();
-
-    // Title
-    let title_text = "SELECT CONTINENT";
-    let text_width = measure_text(title_text, None, 50, 1.0).width;
-    draw_text(
-        title_text,
-        screen_width / 2.0 - text_width / 2.0,
-        screen_height / 4.0,
-        50.0,
-        Color::from_rgba(0, 255, 255, 255)
-    );
-
-    // Tutorial button
-    let tutorial_text = "START TUTORIAL - Press T";
-    let tutorial_width = measure_text(tutorial_text, None, 30, 1.0).width;
-    draw_text(
-        tutorial_text,
-        screen_width / 2.0 - tutorial_width / 2.0,
-        screen_height / 2.0,
-        30.0,
-        Color::from_rgba(255, 255, 0, 255)
-    );
-
-    // Placeholder for continents
-    let placeholder = "Level selection globe - Coming in Phase 3";
-    let placeholder_width = measure_text(placeholder, None, 25, 1.0).width;
-    draw_text(
-        placeholder,
-        screen_width / 2.0 - placeholder_width / 2.0,
-        screen_height / 2.0 + 60.0,
-        25.0,
-        Color::from_rgba(200, 200, 200, 255)
-    );
-
-    let back_text = "PRESS ESC TO GO BACK";
-    let back_width = measure_text(back_text, None, 20, 1.0).width;
-    draw_text(
-        back_text,
-        screen_width / 2.0 - back_width / 2.0,
-        screen_height / 2.0 + 140.0,
-        20.0,
-        Color::from_rgba(255, 255, 255, 255)
-    );
-
-    // Handle input
-    if input.back {
-        scene_manager.request_transition(GameState::MainMenu);
-    }
-
-    if is_key_pressed(KeyCode::T) {
-        scene_manager.request_transition(GameState::Tutorial);
-    }
-
-    if input.confirm {
-        // For now, just start the game directly
-        scene_manager.request_transition(GameState::InGame);
-    }
-}
-
 fn draw_checkpoint_screen(checkpoint_manager: &CheckpointManager) {
     let screen_width = screen_width();
     let screen_height = screen_height();
@@ -795,16 +679,3 @@ fn draw_game_over(score: u32) {
     );
 }
 
-fn draw_placeholder_text(text: &str) {
-    let screen_width = screen_width();
-    let screen_height = screen_height();
-
-    let text_width = measure_text(text, None, 30, 1.0).width;
-    draw_text(
-        text,
-        screen_width / 2.0 - text_width / 2.0,
-        screen_height / 2.0,
-        30.0,
-        Color::from_rgba(255, 255, 255, 255)
-    );
-}

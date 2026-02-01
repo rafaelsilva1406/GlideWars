@@ -180,4 +180,17 @@ impl EnemyManager {
 
         false
     }
+
+    /// Clear enemies within a radius around a position (used on checkpoint respawn)
+    pub fn clear_around_position(&mut self, position: Vec3, radius: f32) {
+        let initial_count = self.enemies.len();
+        self.enemies.retain(|enemy| {
+            let distance = (enemy.position - position).length();
+            distance > radius
+        });
+        let cleared = initial_count - self.enemies.len();
+        if cleared > 0 {
+            println!("Cleared {} enemies around checkpoint", cleared);
+        }
+    }
 }

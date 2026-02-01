@@ -192,4 +192,18 @@ impl TerrainManager {
 
         println!("Terrain reset to Z={:.1}", z_position);
     }
+
+    /// Clear obstacles within a radius around a position (used on checkpoint respawn)
+    pub fn clear_around_position(&mut self, position: Vec3, radius: f32) {
+        let initial_count = self.obstacles.len();
+        self.obstacles.retain(|obs| {
+            // Calculate distance from obstacle to position
+            let distance = (obs.position - position).length();
+            distance > radius
+        });
+        let cleared = initial_count - self.obstacles.len();
+        if cleared > 0 {
+            println!("Cleared {} obstacles around checkpoint", cleared);
+        }
+    }
 }

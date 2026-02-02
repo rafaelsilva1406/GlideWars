@@ -13,6 +13,7 @@ mod level;
 mod checkpoint;
 mod boss;
 mod ui;
+mod save_system;
 
 use player::Player;
 use terrain::TerrainManager;
@@ -27,12 +28,14 @@ use level::LevelManager;
 use checkpoint::CheckpointManager;
 use boss::{Boss, BossType};
 use ui::{SplashScreen, MainMenu, OptionsMenu, LevelSelectScreen};
+use save_system::SaveManager;
 
 #[macroquad::main("Glide Wars")]
 async fn main() {
     let mut scene_manager = SceneManager::new();
     let mut input_manager = InputManager::new();
     let asset_manager = AssetManager::default();
+    let mut save_manager = SaveManager::new();
 
     // Game state
     let mut player = Player::new();
@@ -48,10 +51,18 @@ async fn main() {
     let mut options_menu = OptionsMenu::new();
     let mut level_select_screen = LevelSelectScreen::new();
 
+    // Apply saved settings to options menu
+    options_menu.set_from_settings(
+        save_manager.data().settings.sound_volume,
+        save_manager.data().settings.music_volume,
+        save_manager.data().settings.difficulty as usize,
+    );
+
     let mut level_manager: Option<LevelManager> = None;
     let mut checkpoint_manager = CheckpointManager::new();
     let mut boss: Option<Boss> = None;
     let mut current_continent = Continent::Tutorial;
+    let mut level_select_synced = false;
 
     loop {
         clear_background(BLACK);
@@ -106,6 +117,14 @@ async fn main() {
 
                 match action {
                     ui::options::OptionsAction::Back => {
+                        // Save settings
+                        save_manager.data_mut().update_settings(
+                            options_menu.get_sound_volume(),
+                            options_menu.get_music_volume(),
+                            options_menu.get_difficulty() as u8,
+                        );
+                        save_manager.auto_save();
+
                         scene_manager.request_transition(GameState::MainMenu);
                     }
                     _ => {}
@@ -113,6 +132,12 @@ async fn main() {
             }
 
             GameState::LevelSelect => {
+                // Sync unlocked continents with save data on first entry
+                if !level_select_synced {
+                    level_select_screen.sync_with_save(&save_manager.data().unlocked_continents);
+                    level_select_synced = true;
+                }
+
                 let action = level_select_screen.update(dt);
                 level_select_screen.draw();
 
@@ -183,6 +208,7 @@ async fn main() {
                 if terrain.check_collision(&player) || enemies.check_collision(&player) {
                     player.take_damage(10.0);
                     if player.is_dead() {
+                        save_manager.data_mut().record_death();
                         checkpoint_manager.start_respawn();
                         scene_manager.request_transition(GameState::Checkpoint);
                     }
@@ -205,7 +231,7 @@ async fn main() {
                 // Render 2D UI
                 set_default_camera();
 
-                draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent);
+                draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent, &save_manager);
 
                 // Back to menu
                 if input.back {
@@ -250,6 +276,7 @@ async fn main() {
 
                     // Check if player died
                     if player.is_dead() {
+                        save_manager.data_mut().record_death();
                         checkpoint_manager.start_respawn();
                         scene_manager.request_transition(GameState::Checkpoint);
                     }
@@ -269,7 +296,7 @@ async fn main() {
                     set_default_camera();
 
                     if let Some(ref level_mgr) = level_manager {
-                        draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent);
+                        draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent, &save_manager);
                         draw_boss_health_bar(boss_instance);
                     }
 
@@ -293,10 +320,14 @@ async fn main() {
                     // Reset terrain to checkpoint position and clear around player
                     if let Some(checkpoint_pos) = checkpoint_manager.get_last_checkpoint_position() {
                         terrain.reset_to_position(checkpoint_pos);
-                        // Clear obstacles and enemies in a safe radius around spawn point
-                        let clear_radius = 25.0; // Safe zone radius
+                        // Clear obstacles and enemies in a LARGE safe radius around spawn point
+                        let clear_radius = 50.0; // Doubled safe zone radius for better recovery
                         terrain.clear_around_position(player.position(), clear_radius);
                         enemies.clear_around_position(player.position(), clear_radius);
+
+                        // Pause spawning for 3 seconds after respawn
+                        terrain.pause_spawning(3.0);
+                        enemies.pause_spawning(3.0);
                     }
 
                     // Go back to appropriate state
@@ -317,10 +348,14 @@ async fn main() {
                     // Reset terrain to checkpoint position and clear around player
                     if let Some(checkpoint_pos) = checkpoint_manager.get_last_checkpoint_position() {
                         terrain.reset_to_position(checkpoint_pos);
-                        // Clear obstacles and enemies in a safe radius around spawn point
-                        let clear_radius = 25.0; // Safe zone radius
+                        // Clear obstacles and enemies in a LARGE safe radius around spawn point
+                        let clear_radius = 50.0; // Doubled safe zone radius for better recovery
                         terrain.clear_around_position(player.position(), clear_radius);
                         enemies.clear_around_position(player.position(), clear_radius);
+
+                        // Pause spawning for 3 seconds after respawn
+                        terrain.pause_spawning(3.0);
+                        enemies.pause_spawning(3.0);
                     }
 
                     if boss.is_some() && !boss.as_ref().unwrap().is_defeated() {
@@ -341,6 +376,35 @@ async fn main() {
                 draw_level_complete(scene_manager.scene_data().score);
 
                 if input.confirm {
+                    // Save progress
+                    let final_score = scene_manager.scene_data().score;
+                    if let Some(ref lvl_mgr) = level_manager {
+                        let completion_time = lvl_mgr.elapsed_time();
+
+                        // Update high score
+                        save_manager.data_mut().update_high_score(current_continent, final_score);
+
+                        // Update best time
+                        save_manager.data_mut().update_best_time(current_continent, completion_time);
+
+                        // Unlock next continent
+                        let next_continent = get_next_continent(current_continent);
+                        if let Some(next) = next_continent {
+                            save_manager.data_mut().unlock_continent(next);
+                        }
+
+                        // Record boss kill if defeated
+                        if boss.as_ref().map_or(false, |b| b.is_defeated()) {
+                            save_manager.data_mut().record_boss_kill();
+                        }
+                    }
+
+                    // Save to disk
+                    save_manager.auto_save();
+
+                    // Reset flag so level select resyncs
+                    level_select_synced = false;
+
                     // Reset for next level
                     level_manager = None;
                     checkpoint_manager.clear();
@@ -389,7 +453,24 @@ async fn main() {
         // Draw mobile controls
         input_manager.draw();
 
+        // Track play time during active gameplay
+        if matches!(scene_manager.current_state(), GameState::InGame | GameState::Tutorial | GameState::BossFight) {
+            save_manager.data_mut().add_play_time(dt);
+        }
+
         next_frame().await
+    }
+}
+
+fn get_next_continent(current: Continent) -> Option<Continent> {
+    match current {
+        Continent::Tutorial => Some(Continent::NorthAmerica),
+        Continent::NorthAmerica => Some(Continent::SouthAmerica),
+        Continent::SouthAmerica => Some(Continent::Europe),
+        Continent::Europe => Some(Continent::Asia),
+        Continent::Asia => Some(Continent::Africa),
+        Continent::Africa => Some(Continent::Oceania),
+        Continent::Oceania => None, // Last continent
     }
 }
 
@@ -420,64 +501,105 @@ fn draw_hud_with_level(
     checkpoint_manager: &CheckpointManager,
     _asset_manager: &AssetManager,
     continent: Continent,
+    save_manager: &SaveManager,
 ) {
     let hud_color = Color::from_rgba(0, 255, 255, 255);
     let screen_w = screen_width();
 
+    // === LEFT PANEL ===
+    // Panel background
+    draw_rectangle(10.0, 10.0, 220.0, 140.0, Color::from_rgba(0, 10, 20, 200));
+    draw_rectangle_lines(10.0, 10.0, 220.0, 140.0, 2.0, hud_color);
+
     // Health bar
-    draw_text("HEALTH", 20.0, 30.0, 20.0, hud_color);
+    draw_text("HEALTH", 20.0, 30.0, 18.0, hud_color);
     draw_rectangle(20.0, 35.0, 200.0, 15.0, Color::from_rgba(40, 40, 40, 255));
-    draw_rectangle(20.0, 35.0, player.health() * 2.0, 15.0, Color::from_rgba(0, 255, 0, 255));
+    let health_color = if player.health() > 50.0 {
+        Color::from_rgba(0, 255, 0, 255)
+    } else if player.health() > 25.0 {
+        Color::from_rgba(255, 255, 0, 255)
+    } else {
+        Color::from_rgba(255, 0, 0, 255)
+    };
+    draw_rectangle(20.0, 35.0, player.health() * 2.0, 15.0, health_color);
     draw_rectangle_lines(20.0, 35.0, 200.0, 15.0, 2.0, hud_color);
 
     // Score
-    draw_text(&format!("SCORE: {:08}", score), 20.0, 70.0, 20.0, hud_color);
+    draw_text(&format!("SCORE: {:08}", score), 20.0, 70.0, 18.0, hud_color);
+
+    // High score
+    let high_score = save_manager.data().get_high_score(&continent);
+    draw_text(&format!("HIGH:  {:08}", high_score), 20.0, 90.0, 16.0, Color::from_rgba(255, 215, 0, 255));
 
     // Weapon indicator
     if let Some(weapon) = player.current_weapon() {
-        draw_text(&format!("WEAPON: {}", weapon), 20.0, 95.0, 20.0, hud_color);
-        draw_text(&format!("AMMO: {}", player.ammo()), 20.0, 115.0, 20.0, hud_color);
+        draw_text(&format!("WEAPON: {}", weapon), 20.0, 115.0, 16.0, hud_color);
+        draw_text(&format!("AMMO: {}", player.ammo()), 20.0, 135.0, 16.0, hud_color);
     }
 
-    // Continent indicator (top center)
+    // === TOP CENTER - CONTINENT PANEL ===
     let continent_text = continent.name();
-    let text_width = measure_text(continent_text, None, 30, 1.0).width;
+    let text_width = measure_text(continent_text, None, 32, 1.0).width;
+    let panel_width = text_width + 40.0;
+    let panel_x = screen_w / 2.0 - panel_width / 2.0;
+
+    draw_rectangle(panel_x, 10.0, panel_width, 50.0, Color::from_rgba(0, 10, 20, 200));
+    draw_rectangle_lines(panel_x, 10.0, panel_width, 50.0, 2.0, hud_color);
     draw_text(
         continent_text,
         screen_w / 2.0 - text_width / 2.0,
-        40.0,
-        30.0,
+        42.0,
+        32.0,
         hud_color,
     );
 
-    // Timer (top right)
+    // === RIGHT PANEL - TIMER AND STATS ===
+    let right_panel_width = 200.0;
+    let right_panel_x = screen_w - right_panel_width - 10.0;
+
+    draw_rectangle(right_panel_x, 10.0, right_panel_width, 120.0, Color::from_rgba(0, 10, 20, 200));
+    draw_rectangle_lines(right_panel_x, 10.0, right_panel_width, 120.0, 2.0, hud_color);
+
+    // Timer
     let remaining = level_manager.remaining_time();
     let minutes = (remaining / 60.0) as u32;
     let seconds = (remaining % 60.0) as u32;
-    let timer_text = format!("TIME: {:02}:{:02}", minutes, seconds);
-    let timer_width = measure_text(&timer_text, None, 25, 1.0).width;
+    let timer_color = if remaining < 60.0 {
+        Color::from_rgba(255, 0, 0, 255) // Red warning
+    } else {
+        hud_color
+    };
+    draw_text("TIME", right_panel_x + 10.0, 32.0, 18.0, hud_color);
     draw_text(
-        &timer_text,
-        screen_w - timer_width - 20.0,
-        35.0,
-        25.0,
-        hud_color,
+        &format!("{:02}:{:02}", minutes, seconds),
+        right_panel_x + 10.0,
+        55.0,
+        28.0,
+        timer_color,
     );
 
-    // Checkpoint indicator (top right, below timer)
-    let checkpoint_text = format!(
-        "CHECKPOINT {}/{}",
-        checkpoint_manager.checkpoint_count(),
-        level_manager.total_checkpoints()
-    );
-    let checkpoint_width = measure_text(&checkpoint_text, None, 20, 1.0).width;
+    // Checkpoint
+    draw_text("CHECKPOINT", right_panel_x + 10.0, 80.0, 16.0, hud_color);
     draw_text(
-        &checkpoint_text,
-        screen_w - checkpoint_width - 20.0,
-        60.0,
-        20.0,
+        &format!("{}/{}", checkpoint_manager.checkpoint_count(), level_manager.total_checkpoints()),
+        right_panel_x + 10.0,
+        100.0,
+        22.0,
         Color::from_rgba(255, 255, 0, 255),
     );
+
+    // Best time (if exists)
+    if let Some(best_time) = save_manager.data().get_best_time(&continent) {
+        let best_mins = (best_time / 60.0) as u32;
+        let best_secs = (best_time % 60.0) as u32;
+        draw_text(
+            &format!("BEST: {:02}:{:02}", best_mins, best_secs),
+            right_panel_x + 10.0,
+            120.0,
+            14.0,
+            Color::from_rgba(0, 255, 0, 255),
+        );
+    }
 }
 
 fn draw_boss_health_bar(boss: &Boss) {

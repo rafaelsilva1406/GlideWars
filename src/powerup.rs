@@ -17,6 +17,7 @@ pub struct Powerup {
     powerup_type: PowerupType,
     rotation: f32,
     time_alive: f32,
+    velocity: Vec3,
 }
 
 impl Powerup {
@@ -26,15 +27,41 @@ impl Powerup {
             powerup_type,
             rotation: 0.0,
             time_alive: 0.0,
+            velocity: Vec3::ZERO,
         }
     }
 
-    fn update(&mut self, dt: f32) {
+    fn update(&mut self, dt: f32, player_pos: Vec3) {
         self.rotation += dt * 2.0;
         self.time_alive += dt;
 
         // Floating animation
         self.position.y += (self.time_alive * 3.0).sin() * 0.01;
+
+        // Magnetic pull towards player
+        let distance = (self.position - player_pos).length();
+        let magnetic_range = 7.0; // Start pulling at 7 units
+
+        if distance < magnetic_range && distance > 0.1 {
+            // Calculate direction to player
+            let direction = (player_pos - self.position).normalize();
+
+            // Stronger pull the closer we are (inverse square-ish)
+            let pull_strength = (1.0 - (distance / magnetic_range)).powi(2);
+            let pull_force = 15.0 * pull_strength;
+
+            // Apply magnetic force
+            self.velocity += direction * pull_force * dt;
+
+            // Damping to prevent overshooting
+            self.velocity *= 0.95;
+        } else {
+            // Slow down when not in range
+            self.velocity *= 0.9;
+        }
+
+        // Apply velocity to position
+        self.position += self.velocity * dt;
     }
 
     fn draw(&self) {
@@ -47,19 +74,33 @@ impl Powerup {
             PowerupType::AmmoRefill => (Color::from_rgba(255, 165, 0, 255), 0.35),
         };
 
+        // Check if being pulled (velocity magnitude)
+        let is_being_pulled = self.velocity.length() > 0.5;
+
         // Draw rotating cube for retro look
         draw_cube(self.position, vec3(size, size, size), None, color);
 
         // Wireframe overlay
         draw_cube_wires(self.position, vec3(size, size, size), WHITE);
 
-        // Glowing effect
+        // Glowing effect (stronger when being pulled)
+        let glow_intensity = if is_being_pulled { 150 } else { 100 };
         let glow_size = size + (self.time_alive * 5.0).sin() * 0.1;
         draw_cube_wires(
             self.position,
             vec3(glow_size, glow_size, glow_size),
-            Color::from_rgba(color.r as u8, color.g as u8, color.b as u8, 100)
+            Color::from_rgba(color.r as u8, color.g as u8, color.b as u8, glow_intensity)
         );
+
+        // Extra glow ring when being magnetically pulled
+        if is_being_pulled {
+            let ring_size = size + 0.3;
+            draw_cube_wires(
+                self.position,
+                vec3(ring_size, ring_size, ring_size),
+                Color::from_rgba(255, 255, 255, 200)
+            );
+        }
     }
 
     fn collect(&self, player: &mut Player, score: &mut u32) {
@@ -117,9 +158,9 @@ impl PowerupManager {
             self.spawn_timer = 0.0;
         }
 
-        // Update all powerups
+        // Update all powerups with magnetic pull
         for powerup in &mut self.powerups {
-            powerup.update(dt);
+            powerup.update(dt, player_pos);
         }
 
         // Remove powerups that are behind the player
@@ -156,12 +197,19 @@ impl PowerupManager {
 
     pub fn check_collection(&mut self, player: &mut Player, score: &mut u32) {
         let player_pos = player.position();
-        let collection_distance = 1.5;
+        let collection_distance = 2.0; // Increased from 1.5 to work with magnetic pull
 
         self.powerups.retain(|powerup| {
             let distance = (powerup.position - player_pos).length();
             if distance < collection_distance {
                 powerup.collect(player, score);
+                println!("Collected powerup! +{} points", match powerup.powerup_type {
+                    PowerupType::HealthSmall => 50,
+                    PowerupType::HealthLarge => 100,
+                    PowerupType::WeaponLaser | PowerupType::WeaponSpread => 200,
+                    PowerupType::WeaponMissile => 250,
+                    PowerupType::AmmoRefill => 75,
+                });
                 false // Remove collected powerup
             } else {
                 true

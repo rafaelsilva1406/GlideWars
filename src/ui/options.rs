@@ -286,4 +286,10 @@ impl OptionsMenu {
     pub fn get_difficulty(&self) -> usize {
         self.difficulty
     }
+
+    pub fn set_from_settings(&mut self, sound_volume: f32, music_volume: f32, difficulty: usize) {
+        self.sound_volume = sound_volume;
+        self.music_volume = music_volume;
+        self.difficulty = difficulty;
+    }
 }

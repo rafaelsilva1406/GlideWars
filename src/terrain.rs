@@ -22,6 +22,7 @@ pub struct TerrainManager {
     obstacles: Vec<Obstacle>,
     difficulty: f32,
     last_spawn_z: f32,
+    spawn_cooldown: f32,
 }
 
 impl TerrainManager {
@@ -31,6 +32,7 @@ impl TerrainManager {
             obstacles: Vec::new(),
             difficulty: 1.0,
             last_spawn_z: 0.0,
+            spawn_cooldown: 0.0,
         };
 
         // Initialize ground tiles
@@ -41,8 +43,13 @@ impl TerrainManager {
         manager
     }
 
-    pub fn update(&mut self, _dt: f32, player: &Player) {
+    pub fn update(&mut self, dt: f32, player: &Player) {
         let player_z = player.position().z;
+
+        // Update spawn cooldown
+        if self.spawn_cooldown > 0.0 {
+            self.spawn_cooldown -= dt;
+        }
 
         // Progressive difficulty increase
         self.difficulty = 1.0 + (player_z / 500.0);
@@ -56,8 +63,8 @@ impl TerrainManager {
             }
         }
 
-        // Spawn new obstacles based on distance
-        if player_z > self.last_spawn_z {
+        // Spawn new obstacles based on distance (only if cooldown is 0)
+        if self.spawn_cooldown <= 0.0 && player_z > self.last_spawn_z {
             self.spawn_obstacles(player_z);
             self.last_spawn_z = player_z + 20.0;
         }
@@ -205,5 +212,170 @@ impl TerrainManager {
         if cleared > 0 {
             println!("Cleared {} obstacles around checkpoint", cleared);
         }
+    }
+
+    /// Pause spawning for a duration (used after respawn)
+    pub fn pause_spawning(&mut self, duration: f32) {
+        self.spawn_cooldown = duration;
+        println!("Terrain spawning paused for {:.1}s", duration);
+    }
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    fn create_test_player(z: f32) -> Player {
+        let mut player = Player::new();
+        player.set_position(vec3(0.0, 0.0, z));
+        player
+    }
+
+    #[test]
+    fn test_terrain_initialization() {
+        let terrain = TerrainManager::new();
+        assert_eq!(terrain.ground_tiles.len(), 20);
+        assert_eq!(terrain.obstacles.len(), 0);
+        assert_eq!(terrain.difficulty, 1.0);
+    }
+
+    #[test]
+    fn test_obstacle_spawning() {
+        let mut terrain = TerrainManager::new();
+        let player = create_test_player(100.0);
+
+        // Update several times to trigger spawns
+        for _ in 0..50 {
+            terrain.update(0.1, &player);
+        }
+
+        // Should have spawned some obstacles
+        assert!(terrain.obstacles.len() > 0);
+    }
+
+    #[test]
+    fn test_difficulty_increases_with_distance() {
+        let mut terrain = TerrainManager::new();
+        let player1 = create_test_player(0.0);
+        terrain.update(0.1, &player1);
+        let difficulty1 = terrain.difficulty;
+
+        let player2 = create_test_player(500.0);
+        terrain.update(0.1, &player2);
+        let difficulty2 = terrain.difficulty;
+
+        assert!(difficulty2 > difficulty1);
+    }
+
+    #[test]
+    fn test_ground_tile_recycling() {
+        let mut terrain = TerrainManager::new();
+        let initial_tiles = terrain.ground_tiles.len();
+
+        let mut player = create_test_player(0.0);
+        player.set_position(vec3(0.0, 0.0, 100.0));
+
+        terrain.update(0.1, &player);
+
+        // Should still have same number of tiles (recycled)
+        assert_eq!(terrain.ground_tiles.len(), initial_tiles);
+    }
+
+    #[test]
+    fn test_obstacle_cleanup() {
+        let mut terrain = TerrainManager::new();
+        let player = create_test_player(100.0);
+
+        // Add obstacle far behind player
+        terrain.obstacles.push(Obstacle {
+            position: vec3(0.0, 0.0, -50.0),
+            size: vec3(2.0, 2.0, 2.0),
+            obstacle_type: ObstacleType::Boulder,
+        });
+
+        terrain.update(0.1, &player);
+
+        // Old obstacle should be removed
+        assert_eq!(terrain.obstacles.len(), 0);
+    }
+
+    #[test]
+    fn test_collision_detection_with_obstacle() {
+        let mut terrain = TerrainManager::new();
+        let player = create_test_player(10.0);
+
+        // Add obstacle at player position
+        terrain.obstacles.push(Obstacle {
+            position: vec3(0.0, 0.0, 10.0),
+            size: vec3(2.0, 2.0, 2.0),
+            obstacle_type: ObstacleType::Boulder,
+        });
+
+        assert!(terrain.check_collision(&player));
+    }
+
+    #[test]
+    fn test_no_collision_when_far() {
+        let mut terrain = TerrainManager::new();
+        let player = create_test_player(10.0);
+
+        // Add obstacle far from player
+        terrain.obstacles.push(Obstacle {
+            position: vec3(20.0, 20.0, 50.0),
+            size: vec3(2.0, 2.0, 2.0),
+            obstacle_type: ObstacleType::Boulder,
+        });
+
+        assert!(!terrain.check_collision(&player));
+    }
+
+    #[test]
+    fn test_reset_to_position() {
+        let mut terrain = TerrainManager::new();
+
+        // Add obstacles at various positions
+        terrain.obstacles.push(Obstacle {
+            position: vec3(0.0, 0.0, 50.0),
+            size: vec3(2.0, 2.0, 2.0),
+            obstacle_type: ObstacleType::Boulder,
+        });
+        terrain.obstacles.push(Obstacle {
+            position: vec3(0.0, 0.0, 100.0),
+            size: vec3(2.0, 2.0, 2.0),
+            obstacle_type: ObstacleType::Mountain,
+        });
+
+        terrain.reset_to_position(90.0);
+
+        // Should remove obstacles behind reset position
+        assert_eq!(terrain.obstacles.len(), 1);
+        assert!(terrain.obstacles[0].position.z > 70.0);
+
+        // Ground tiles should be realigned
+        assert_eq!(terrain.ground_tiles.len(), 20);
+    }
+
+    #[test]
+    fn test_clear_around_position() {
+        let mut terrain = TerrainManager::new();
+
+        // Add obstacles at various positions
+        let center = vec3(0.0, 0.0, 100.0);
+        terrain.obstacles.push(Obstacle {
+            position: vec3(5.0, 0.0, 100.0), // Close
+            size: vec3(2.0, 2.0, 2.0),
+            obstacle_type: ObstacleType::Boulder,
+        });
+        terrain.obstacles.push(Obstacle {
+            position: vec3(30.0, 0.0, 100.0), // Far
+            size: vec3(2.0, 2.0, 2.0),
+            obstacle_type: ObstacleType::Mountain,
+        });
+
+        terrain.clear_around_position(center, 15.0);
+
+        // Should only keep far obstacle
+        assert_eq!(terrain.obstacles.len(), 1);
+        assert!(terrain.obstacles[0].position.x > 20.0);
     }
 }

@@ -264,3 +264,193 @@ impl Player {
         self.position = position;
     }
 }
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn test_player_initialization() {
+        let player = Player::new();
+        assert_eq!(player.health(), 100.0);
+        assert_eq!(player.position(), vec3(0.0, 0.0, 0.0));
+        assert_eq!(player.velocity, vec3(0.0, 0.0, 0.0));
+        assert!(!player.is_dead());
+    }
+
+    #[test]
+    fn test_player_take_damage() {
+        let mut player = Player::new();
+        player.take_damage(30.0);
+        assert_eq!(player.health(), 70.0);
+        assert!(!player.is_dead());
+    }
+
+    #[test]
+    fn test_player_death() {
+        let mut player = Player::new();
+        player.take_damage(100.0);
+        assert_eq!(player.health(), 0.0);
+        assert!(player.is_dead());
+    }
+
+    #[test]
+    fn test_player_overkill_damage() {
+        let mut player = Player::new();
+        player.take_damage(150.0);
+        assert_eq!(player.health(), 0.0);
+        assert!(player.is_dead());
+    }
+
+    #[test]
+    fn test_player_heal() {
+        let mut player = Player::new();
+        player.take_damage(50.0);
+        assert_eq!(player.health(), 50.0);
+
+        player.heal(30.0);
+        assert_eq!(player.health(), 80.0);
+    }
+
+    #[test]
+    fn test_player_heal_does_not_exceed_max() {
+        let mut player = Player::new();
+        player.take_damage(20.0);
+        player.heal(50.0); // Try to overheal
+        assert_eq!(player.health(), 100.0);
+    }
+
+    #[test]
+    fn test_weapon_switching() {
+        let mut player = Player::new();
+
+        // Start with no weapon
+        assert_eq!(player.current_weapon(), None);
+
+        // Pickup laser
+        player.pickup_weapon(Weapon::Laser);
+        assert_eq!(player.current_weapon(), Some("Laser"));
+        assert_eq!(player.ammo(), 100);
+
+        // Pickup missiles
+        player.pickup_weapon(Weapon::Missile);
+        assert_eq!(player.current_weapon(), Some("Missile"));
+        assert_eq!(player.ammo(), 50);
+    }
+
+    #[test]
+    fn test_shooting_without_weapon() {
+        let mut player = Player::new();
+        assert_eq!(player.projectiles.len(), 0);
+
+        player.shoot();
+        // Should not create projectiles without weapon
+        assert_eq!(player.projectiles.len(), 0);
+    }
+
+    #[test]
+    fn test_shooting_with_weapon() {
+        let mut player = Player::new();
+        player.pickup_weapon(Weapon::Laser);
+
+        player.shoot();
+        assert_eq!(player.projectiles.len(), 1);
+        assert_eq!(player.ammo(), 99);
+    }
+
+    #[test]
+    fn test_shooting_without_ammo() {
+        let mut player = Player::new();
+        player.pickup_weapon(Weapon::Laser);
+        player.ammo = 0;
+
+        player.shoot();
+        // Should not create projectiles without ammo
+        assert_eq!(player.projectiles.len(), 0);
+    }
+
+    #[test]
+    fn test_checkpoint_restore() {
+        let mut player = Player::new();
+        player.take_damage(50.0);
+        player.position = vec3(10.0, 5.0, 100.0);
+
+        // Restore from checkpoint
+        let checkpoint_pos = vec3(5.0, 2.0, 50.0);
+        player.restore_from_checkpoint(checkpoint_pos, 80.0, Weapon::Laser, 75);
+
+        assert_eq!(player.health(), 80.0);
+        assert_eq!(player.position(), checkpoint_pos);
+        assert_eq!(player.current_weapon(), Some("Laser"));
+        assert_eq!(player.ammo(), 75);
+        assert_eq!(player.velocity, vec3(0.0, 0.0, 0.0));
+        assert_eq!(player.projectiles.len(), 0);
+    }
+
+    #[test]
+    fn test_gravity_applies_downward_force() {
+        let mut player = Player::new();
+        let initial_y = player.position.y;
+
+        // Update with no input (gravity should pull down)
+        player.update(0.1);
+
+        // Y velocity should be negative (downward)
+        assert!(player.velocity.y < 0.0);
+    }
+
+    #[test]
+    fn test_velocity_clamping() {
+        let mut player = Player::new();
+
+        // Artificially set extreme velocity
+        player.velocity.y = 100.0;
+        player.velocity.x = 50.0;
+
+        player.update(0.1);
+
+        // Velocity should be clamped
+        assert!(player.velocity.y <= 5.0);
+        assert!(player.velocity.x <= 10.0);
+        assert!(player.velocity.y >= -8.0);
+        assert!(player.velocity.x >= -10.0);
+    }
+
+    #[test]
+    fn test_height_ceiling() {
+        let mut player = Player::new();
+        player.position.y = 10.0; // Above ceiling
+
+        player.update(0.1);
+
+        // Should be clamped to ceiling
+        assert!(player.position.y <= 6.0);
+    }
+
+    #[test]
+    fn test_ground_bounce() {
+        let mut player = Player::new();
+        player.position.y = -2.0; // Below ground
+        player.velocity.y = -5.0; // Moving down
+
+        player.update(0.1);
+
+        // Should be at ground level
+        assert!(player.position.y >= -1.0);
+    }
+
+    #[test]
+    fn test_projectile_cleanup() {
+        let mut player = Player::new();
+        player.pickup_weapon(Weapon::Laser);
+        player.shoot();
+
+        // Move projectile far away
+        player.projectiles[0].position.z = player.position.z + 100.0;
+
+        player.update(0.1);
+
+        // Projectile should be removed (beyond 80 unit range)
+        assert_eq!(player.projectiles.len(), 0);
+    }
+}

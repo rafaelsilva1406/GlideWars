@@ -374,4 +374,12 @@ impl LevelSelectScreen {
             }
         }
     }
+
+    /// Sync unlocked status with save data
+    pub fn sync_with_save(&mut self, unlocked_continents: &[String]) {
+        for (i, display) in self.continents.iter().enumerate() {
+            let continent_name = display.continent.name();
+            self.unlocked_continents[i] = unlocked_continents.contains(&continent_name.to_string());
+        }
+    }
 }

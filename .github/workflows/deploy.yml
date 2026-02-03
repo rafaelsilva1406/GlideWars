@@ -1,10 +1,12 @@
 name: Deploy to Azure
 
+# Disabled automatic deployment until Azure environment is ready
+# To deploy manually: Go to Actions tab → Deploy to Azure → Run workflow
 on:
-  push:
-    branches: [ main ]
-    tags:
-      - 'v*'
+  # push:
+  #   branches: [ main ]
+  #   tags:
+  #     - 'v*'
   workflow_dispatch:
 
 env:

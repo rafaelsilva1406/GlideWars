@@ -34,6 +34,9 @@ pub struct Player {
     ammo: u32,
     projectiles: Vec<Projectile>,
     shoot_cooldown: f32,
+    boost_energy: f32,
+    boost_max_energy: f32,
+    boost_recharge_rate: f32,
 }
 
 impl Player {
@@ -47,19 +50,37 @@ impl Player {
             ammo: 0,
             projectiles: Vec::new(),
             shoot_cooldown: 0.0,
+            boost_energy: 100.0,
+            boost_max_energy: 100.0,
+            boost_recharge_rate: 20.0, // Recharges 20 per second
         }
     }
 
     pub fn update(&mut self, dt: f32) {
+        // Speed boost system (using Tab key for now - Shift keys have issues in macroquad)
+        let is_boosting = is_key_down(KeyCode::Tab) || is_key_down(KeyCode::LeftShift) || is_key_down(KeyCode::RightShift);
+        let speed_multiplier = if is_boosting && self.boost_energy > 0.0 {
+            // Drain boost energy when boosting
+            self.boost_energy -= 50.0 * dt; // Drains 50 per second
+            self.boost_energy = self.boost_energy.max(0.0);
+            1.8 // 80% speed increase
+        } else {
+            // Recharge boost energy when not boosting
+            self.boost_energy += self.boost_recharge_rate * dt;
+            self.boost_energy = self.boost_energy.min(self.boost_max_energy);
+            1.0 // Normal speed
+        };
+
         // Glider physics - always moving forward
-        let forward_speed = 10.0;
+        let forward_speed = 10.0 * speed_multiplier;
         self.velocity.z = forward_speed;
 
-        // Horizontal controls
+        // Horizontal controls (also affected by boost)
+        let horizontal_speed = 5.0 * speed_multiplier;
         if is_key_down(KeyCode::Left) || is_key_down(KeyCode::A) {
-            self.velocity.x = -5.0;
+            self.velocity.x = -horizontal_speed;
         } else if is_key_down(KeyCode::Right) || is_key_down(KeyCode::D) {
-            self.velocity.x = 5.0;
+            self.velocity.x = horizontal_speed;
         } else {
             self.velocity.x *= 0.9; // Damping
         }
@@ -198,6 +219,10 @@ impl Player {
         self.position
     }
 
+    pub fn velocity(&self) -> Vec3 {
+        self.velocity
+    }
+
     pub fn take_damage(&mut self, damage: f32) {
         self.health -= damage;
         if self.health < 0.0 {
@@ -238,6 +263,14 @@ impl Player {
 
     pub fn health(&self) -> f32 {
         self.health
+    }
+
+    pub fn boost_energy(&self) -> f32 {
+        self.boost_energy
+    }
+
+    pub fn boost_max_energy(&self) -> f32 {
+        self.boost_max_energy
     }
 
     pub fn get_projectiles(&self) -> &Vec<Projectile> {

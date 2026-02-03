@@ -27,7 +27,7 @@ use assets::{AssetManager, Continent};
 use level::LevelManager;
 use checkpoint::CheckpointManager;
 use boss::{Boss, BossType};
-use ui::{SplashScreen, MainMenu, OptionsMenu, LevelSelectScreen};
+use ui::{SplashScreen, MainMenu, OptionsMenu, LevelSelectScreen, TutorialInstructions};
 use save_system::SaveManager;
 
 #[macroquad::main("Glide Wars")]
@@ -50,6 +50,7 @@ async fn main() {
     let mut main_menu = MainMenu::new();
     let mut options_menu = OptionsMenu::new();
     let mut level_select_screen = LevelSelectScreen::new();
+    let mut tutorial_instructions = TutorialInstructions::new();
 
     // Apply saved settings to options menu
     options_menu.set_from_settings(
@@ -145,13 +146,30 @@ async fn main() {
                     ui::level_select::LevelSelectAction::StartLevel(continent) => {
                         current_continent = continent;
                         if continent == Continent::Tutorial {
-                            scene_manager.request_transition(GameState::Tutorial);
+                            // Show tutorial instructions first
+                            tutorial_instructions.reset();
+                            scene_manager.request_transition(GameState::TutorialInstructions);
                         } else {
                             scene_manager.request_transition(GameState::InGame);
                         }
                     }
                     ui::level_select::LevelSelectAction::Back => {
                         scene_manager.request_transition(GameState::MainMenu);
+                    }
+                    _ => {}
+                }
+            }
+
+            GameState::TutorialInstructions => {
+                let action = tutorial_instructions.update(dt);
+                tutorial_instructions.draw();
+
+                match action {
+                    ui::tutorial_instructions::TutorialAction::Start => {
+                        scene_manager.request_transition(GameState::Tutorial);
+                    }
+                    ui::tutorial_instructions::TutorialAction::Back => {
+                        scene_manager.request_transition(GameState::LevelSelect);
                     }
                     _ => {}
                 }
@@ -186,6 +204,7 @@ async fn main() {
                     let boss_type = BossType::from_continent(current_continent);
                     let spawn_pos = player.position() + vec3(0.0, 5.0, 30.0);
                     boss = Some(Boss::new(boss_type, spawn_pos));
+                    println!("=== BOSS SPAWNED: {} at {:.1}s ===", boss_type.name(), level_mgr.elapsed_time());
                     scene_manager.request_transition(GameState::BossFight);
                 }
 
@@ -242,8 +261,19 @@ async fn main() {
 
             GameState::BossFight => {
                 if let Some(ref mut boss_instance) = boss {
+                    // Update level timer
+                    if let Some(ref mut level_mgr) = level_manager {
+                        level_mgr.update(dt, player.position().z);
+
+                        // Check if level time is up (even if boss not defeated)
+                        if level_mgr.is_complete() {
+                            scene_manager.scene_data_mut().score += 5000; // Bonus for completing level
+                            scene_manager.request_transition(GameState::LevelComplete);
+                        }
+                    }
+
                     // Update boss
-                    boss_instance.update(dt, player.position());
+                    boss_instance.update(dt, player.position(), player.velocity());
 
                     // Boss collision with player
                     if boss_instance.check_collision_with_player(player.position()) {
@@ -267,9 +297,16 @@ async fn main() {
                     // Check if boss defeated
                     if boss_instance.is_defeated() {
                         scene_manager.scene_data_mut().score += 5000; // Big bonus for defeating boss
+
+                        // Check if level is complete
                         if let Some(ref level_mgr) = level_manager {
                             if level_mgr.is_complete() {
+                                // Level time is up, proceed to completion
                                 scene_manager.request_transition(GameState::LevelComplete);
+                            } else {
+                                // Boss defeated but level continues, go back to InGame
+                                println!("Boss defeated! Continuing level...");
+                                scene_manager.request_transition(GameState::InGame);
                             }
                         }
                     }
@@ -508,8 +545,8 @@ fn draw_hud_with_level(
 
     // === LEFT PANEL ===
     // Panel background
-    draw_rectangle(10.0, 10.0, 220.0, 140.0, Color::from_rgba(0, 10, 20, 200));
-    draw_rectangle_lines(10.0, 10.0, 220.0, 140.0, 2.0, hud_color);
+    draw_rectangle(10.0, 10.0, 220.0, 165.0, Color::from_rgba(0, 10, 20, 200));
+    draw_rectangle_lines(10.0, 10.0, 220.0, 165.0, 2.0, hud_color);
 
     // Health bar
     draw_text("HEALTH", 20.0, 30.0, 18.0, hud_color);
@@ -524,17 +561,32 @@ fn draw_hud_with_level(
     draw_rectangle(20.0, 35.0, player.health() * 2.0, 15.0, health_color);
     draw_rectangle_lines(20.0, 35.0, 200.0, 15.0, 2.0, hud_color);
 
+    // Boost energy bar
+    draw_text("BOOST", 20.0, 68.0, 18.0, hud_color);
+    draw_rectangle(20.0, 73.0, 200.0, 12.0, Color::from_rgba(40, 40, 40, 255));
+    let boost_percentage = player.boost_energy() / player.boost_max_energy();
+    let boost_width = 200.0 * boost_percentage;
+    let boost_color = if boost_percentage > 0.5 {
+        Color::from_rgba(0, 200, 255, 255) // Cyan when full
+    } else if boost_percentage > 0.25 {
+        Color::from_rgba(100, 150, 255, 255) // Blue when medium
+    } else {
+        Color::from_rgba(150, 150, 150, 255) // Gray when low
+    };
+    draw_rectangle(20.0, 73.0, boost_width, 12.0, boost_color);
+    draw_rectangle_lines(20.0, 73.0, 200.0, 12.0, 2.0, hud_color);
+
     // Score
-    draw_text(&format!("SCORE: {:08}", score), 20.0, 70.0, 18.0, hud_color);
+    draw_text(&format!("SCORE: {:08}", score), 20.0, 100.0, 18.0, hud_color);
 
     // High score
     let high_score = save_manager.data().get_high_score(&continent);
-    draw_text(&format!("HIGH:  {:08}", high_score), 20.0, 90.0, 16.0, Color::from_rgba(255, 215, 0, 255));
+    draw_text(&format!("HIGH:  {:08}", high_score), 20.0, 120.0, 16.0, Color::from_rgba(255, 215, 0, 255));
 
     // Weapon indicator
     if let Some(weapon) = player.current_weapon() {
-        draw_text(&format!("WEAPON: {}", weapon), 20.0, 115.0, 16.0, hud_color);
-        draw_text(&format!("AMMO: {}", player.ammo()), 20.0, 135.0, 16.0, hud_color);
+        draw_text(&format!("WEAPON: {}", weapon), 20.0, 145.0, 16.0, hud_color);
+        draw_text(&format!("AMMO: {}", player.ammo()), 20.0, 165.0, 16.0, hud_color);
     }
 
     // === TOP CENTER - CONTINENT PANEL ===

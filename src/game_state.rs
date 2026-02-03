@@ -6,6 +6,7 @@ pub enum GameState {
     MainMenu,
     Options,
     LevelSelect,
+    TutorialInstructions, // Tutorial instructions screen
     Tutorial,
     InGame,
     BossFight,
@@ -81,8 +82,12 @@ impl GameStateManager {
 
             // From LevelSelect
             (GameState::LevelSelect, GameState::MainMenu) => true,
-            (GameState::LevelSelect, GameState::Tutorial) => true,
+            (GameState::LevelSelect, GameState::TutorialInstructions) => true,
             (GameState::LevelSelect, GameState::InGame) => true,
+
+            // From TutorialInstructions
+            (GameState::TutorialInstructions, GameState::Tutorial) => true,
+            (GameState::TutorialInstructions, GameState::LevelSelect) => true,
 
             // From Tutorial
             (GameState::Tutorial, GameState::InGame) => true,
@@ -98,8 +103,10 @@ impl GameStateManager {
 
             // From BossFight
             (GameState::BossFight, GameState::LevelComplete) => true,
+            (GameState::BossFight, GameState::InGame) => true, // Continue after boss defeat
             (GameState::BossFight, GameState::Checkpoint) => true,
             (GameState::BossFight, GameState::GameOver) => true,
+            (GameState::BossFight, GameState::MainMenu) => true,
 
             // From Checkpoint
             (GameState::Checkpoint, GameState::InGame) => true,

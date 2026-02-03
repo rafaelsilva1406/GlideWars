@@ -139,7 +139,7 @@ impl Boss {
         }
     }
 
-    pub fn update(&mut self, dt: f32, player_pos: Vec3) {
+    pub fn update(&mut self, dt: f32, player_pos: Vec3, player_velocity: Vec3) {
         if self.defeated {
             return;
         }
@@ -157,17 +157,36 @@ impl Boss {
             3
         };
 
-        // Boss movement - circular pattern around player
+        // Boss movement - circular pattern around player, but stays ahead
         let angle = self.time_alive * 0.5;
         let radius = 15.0;
         let target_x = player_pos.x + angle.cos() * radius;
         let target_y = player_pos.y + 3.0 + (self.time_alive * 0.3).sin() * 2.0;
 
-        // Move toward target position
-        let target_pos = vec3(target_x, target_y, player_pos.z + 20.0);
-        let direction = (target_pos - self.position).normalize();
-        self.velocity = direction * 3.0;
+        // Move toward target X/Y position
+        let target_pos_xy = vec3(target_x, target_y, self.position.z);
+        let direction_xy = (target_pos_xy - self.position).normalize_or_zero();
+
+        // Horizontal movement (X and Y)
+        self.velocity.x = direction_xy.x * 5.0;
+        self.velocity.y = direction_xy.y * 5.0;
+
+        // Forward movement (Z) - match player's forward speed to stay ahead
+        // Use player's actual forward velocity (including boost)
+        self.velocity.z = player_velocity.z;
+
+        // Apply velocity
         self.position += self.velocity * dt;
+
+        // Maintain distance ahead of player (20 units)
+        let distance_ahead = self.position.z - player_pos.z;
+        if distance_ahead < 15.0 {
+            // Too close, speed up to maintain distance
+            self.position.z = player_pos.z + 15.0;
+        } else if distance_ahead > 25.0 {
+            // Too far ahead, slow down
+            self.position.z = player_pos.z + 25.0;
+        }
 
         // Attack logic
         if self.attack_timer >= self.attack_cooldown {

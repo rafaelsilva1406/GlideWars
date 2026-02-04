@@ -57,6 +57,7 @@ impl GameStateManager {
     }
 
     fn transition_to(&mut self, new_state: GameState) {
+        #[cfg(debug_assertions)]
         println!("State transition: {:?} -> {:?}", self.current_state, new_state);
         self.previous_state = Some(self.current_state);
         self.current_state = new_state;

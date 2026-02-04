@@ -10,6 +10,7 @@ pub enum PowerupType {
     WeaponMissile,
     WeaponSpread,
     AmmoRefill,
+    DroneCompanion,
 }
 
 pub struct Powerup {
@@ -72,6 +73,7 @@ impl Powerup {
             PowerupType::WeaponMissile => (Color::from_rgba(255, 255, 0, 255), 0.4),
             PowerupType::WeaponSpread => (Color::from_rgba(255, 0, 255, 255), 0.4),
             PowerupType::AmmoRefill => (Color::from_rgba(255, 165, 0, 255), 0.35),
+            PowerupType::DroneCompanion => (Color::from_rgba(0, 255, 100, 255), 0.45),
         };
 
         // Check if being pulled (velocity magnitude)
@@ -129,6 +131,10 @@ impl Powerup {
                 player.add_ammo(25);
                 *score += 75;
             }
+            PowerupType::DroneCompanion => {
+                // Handled externally in main.rs
+                *score += 300;
+            }
         }
     }
 }
@@ -175,12 +181,13 @@ impl PowerupManager {
 
         // Random powerup type with weighted distribution
         let powerup_type = match gen_range(0, 100) {
-            0..=30 => PowerupType::HealthSmall,
-            31..=40 => PowerupType::HealthLarge,
-            41..=55 => PowerupType::WeaponLaser,
-            56..=70 => PowerupType::WeaponSpread,
-            71..=80 => PowerupType::WeaponMissile,
-            _ => PowerupType::AmmoRefill,
+            0..=18 => PowerupType::HealthSmall,
+            19..=27 => PowerupType::HealthLarge,
+            28..=36 => PowerupType::WeaponLaser,
+            37..=45 => PowerupType::WeaponSpread,
+            46..=54 => PowerupType::WeaponMissile,
+            55..=64 => PowerupType::AmmoRefill,
+            _ => PowerupType::DroneCompanion, // 35% chance
         };
 
         self.powerups.push(Powerup::new(
@@ -195,25 +202,32 @@ impl PowerupManager {
         }
     }
 
-    pub fn check_collection(&mut self, player: &mut Player, score: &mut u32) {
+    pub fn check_collection(&mut self, player: &mut Player, score: &mut u32) -> Option<PowerupType> {
         let player_pos = player.position();
         let collection_distance = 2.0; // Increased from 1.5 to work with magnetic pull
+
+        let mut collected_type = None;
 
         self.powerups.retain(|powerup| {
             let distance = (powerup.position - player_pos).length();
             if distance < collection_distance {
                 powerup.collect(player, score);
+                collected_type = Some(powerup.powerup_type);
+                #[cfg(debug_assertions)]
                 println!("Collected powerup! +{} points", match powerup.powerup_type {
                     PowerupType::HealthSmall => 50,
                     PowerupType::HealthLarge => 100,
                     PowerupType::WeaponLaser | PowerupType::WeaponSpread => 200,
                     PowerupType::WeaponMissile => 250,
                     PowerupType::AmmoRefill => 75,
+                    PowerupType::DroneCompanion => 300,
                 });
                 false // Remove collected powerup
             } else {
                 true
             }
         });
+
+        collected_type
     }
 }

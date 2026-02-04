@@ -197,6 +197,7 @@ impl TerrainManager {
         // Update last spawn position to be just before checkpoint
         self.last_spawn_z = z_position;
 
+        #[cfg(debug_assertions)]
         println!("Terrain reset to Z={:.1}", z_position);
     }
 
@@ -209,6 +210,7 @@ impl TerrainManager {
             distance > radius
         });
         let cleared = initial_count - self.obstacles.len();
+        #[cfg(debug_assertions)]
         if cleared > 0 {
             println!("Cleared {} obstacles around checkpoint", cleared);
         }
@@ -217,6 +219,7 @@ impl TerrainManager {
     /// Pause spawning for a duration (used after respawn)
     pub fn pause_spawning(&mut self, duration: f32) {
         self.spawn_cooldown = duration;
+        #[cfg(debug_assertions)]
         println!("Terrain spawning paused for {:.1}s", duration);
     }
 }

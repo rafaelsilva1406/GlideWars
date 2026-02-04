@@ -14,6 +14,8 @@ mod checkpoint;
 mod boss;
 mod ui;
 mod save_system;
+mod rings;
+mod drone_companion;
 
 use player::Player;
 use terrain::TerrainManager;
@@ -28,6 +30,8 @@ use level::LevelManager;
 use checkpoint::CheckpointManager;
 use boss::{Boss, BossType};
 use ui::{SplashScreen, MainMenu, OptionsMenu, LevelSelectScreen, TutorialInstructions};
+use rings::RingManager;
+use drone_companion::DroneCompanion;
 use save_system::SaveManager;
 
 #[macroquad::main("Glide Wars")]
@@ -42,6 +46,8 @@ async fn main() {
     let mut terrain = TerrainManager::new();
     let mut enemies = EnemyManager::new();
     let mut powerups = PowerupManager::new();
+    let mut rings = RingManager::new();
+    let mut drone = DroneCompanion::new();
     let mut camera = GameCamera::new();
 
     // Level management
@@ -180,6 +186,8 @@ async fn main() {
                 if level_manager.is_none() {
                     level_manager = Some(LevelManager::new(current_continent));
                     checkpoint_manager.clear();
+                    rings.reset();
+                    drone.deactivate();
                     boss = None;
                 }
 
@@ -204,6 +212,7 @@ async fn main() {
                     let boss_type = BossType::from_continent(current_continent);
                     let spawn_pos = player.position() + vec3(0.0, 5.0, 30.0);
                     boss = Some(Boss::new(boss_type, spawn_pos));
+                    #[cfg(debug_assertions)]
                     println!("=== BOSS SPAWNED: {} at {:.1}s ===", boss_type.name(), level_mgr.elapsed_time());
                     scene_manager.request_transition(GameState::BossFight);
                 }
@@ -217,6 +226,8 @@ async fn main() {
                 player.update(dt);
                 terrain.update(dt, &player);
                 enemies.update(dt, &player);
+                rings.update(dt, &player);
+                drone.update(dt, &player);
 
                 let score = scene_manager.scene_data().score;
                 let mut score_mut = score;
@@ -234,7 +245,30 @@ async fn main() {
                 }
 
                 // Check powerup collection
-                powerups.check_collection(&mut player, &mut scene_manager.scene_data_mut().score);
+                if let Some(powerup_type) = powerups.check_collection(&mut player, &mut scene_manager.scene_data_mut().score) {
+                    if matches!(powerup_type, powerup::PowerupType::DroneCompanion) {
+                        drone.activate(player.position());
+                    }
+                }
+
+                // Check ring collection
+                rings.check_collection(&player, &mut scene_manager.scene_data_mut().score);
+
+                // Drone projectiles hit enemies
+                if drone.is_active() {
+                    let mut projectiles_to_remove = Vec::new();
+                    let drone_projectiles = drone.get_projectiles();
+                    for (idx, proj) in drone_projectiles.iter().enumerate() {
+                        if enemies.check_projectile_hit(proj.position) {
+                            projectiles_to_remove.push(idx);
+                            scene_manager.scene_data_mut().score += 25;
+                        }
+                    }
+                    // Remove collected projectiles (reverse order to preserve indices)
+                    for idx in projectiles_to_remove.iter().rev() {
+                        drone.clear_projectile(*idx);
+                    }
+                }
 
                 // Update camera
                 camera.update(&player);
@@ -245,12 +279,14 @@ async fn main() {
                 terrain.draw();
                 enemies.draw();
                 powerups.draw();
+                rings.draw();
+                drone.draw();
                 player.draw();
 
                 // Render 2D UI
                 set_default_camera();
 
-                draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent, &save_manager);
+                draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent, &save_manager, &drone);
 
                 // Back to menu
                 if input.back {
@@ -305,6 +341,7 @@ async fn main() {
                                 scene_manager.request_transition(GameState::LevelComplete);
                             } else {
                                 // Boss defeated but level continues, go back to InGame
+                                #[cfg(debug_assertions)]
                                 println!("Boss defeated! Continuing level...");
                                 scene_manager.request_transition(GameState::InGame);
                             }
@@ -333,7 +370,7 @@ async fn main() {
                     set_default_camera();
 
                     if let Some(ref level_mgr) = level_manager {
-                        draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent, &save_manager);
+                        draw_hud_with_level(&player, scene_manager.scene_data().score, level_mgr, &checkpoint_manager, &asset_manager, current_continent, &save_manager, &drone);
                         draw_boss_health_bar(boss_instance);
                     }
 
@@ -353,6 +390,9 @@ async fn main() {
                 if checkpoint_manager.update_respawn(dt) {
                     // Respawn ready
                     checkpoint_manager.restore_player_state(&mut player, &mut scene_manager.scene_data_mut().score);
+
+                    // Deactivate drone companion on respawn
+                    drone.deactivate();
 
                     // Reset terrain to checkpoint position and clear around player
                     if let Some(checkpoint_pos) = checkpoint_manager.get_last_checkpoint_position() {
@@ -381,6 +421,9 @@ async fn main() {
                 if input.confirm {
                     checkpoint_manager.cancel_respawn();
                     checkpoint_manager.restore_player_state(&mut player, &mut scene_manager.scene_data_mut().score);
+
+                    // Deactivate drone companion on respawn
+                    drone.deactivate();
 
                     // Reset terrain to checkpoint position and clear around player
                     if let Some(checkpoint_pos) = checkpoint_manager.get_last_checkpoint_position() {
@@ -539,6 +582,7 @@ fn draw_hud_with_level(
     _asset_manager: &AssetManager,
     continent: Continent,
     save_manager: &SaveManager,
+    drone: &DroneCompanion,
 ) {
     let hud_color = Color::from_rgba(0, 255, 255, 255);
     let screen_w = screen_width();
@@ -587,6 +631,20 @@ fn draw_hud_with_level(
     if let Some(weapon) = player.current_weapon() {
         draw_text(&format!("WEAPON: {}", weapon), 20.0, 145.0, 16.0, hud_color);
         draw_text(&format!("AMMO: {}", player.ammo()), 20.0, 165.0, 16.0, hud_color);
+    }
+
+    // Drone companion indicator
+    if drone.is_active() {
+        let drone_y = if player.current_weapon().is_some() { 190.0 } else { 145.0 };
+        let remaining = drone.remaining_time();
+        let drone_color = if remaining > 15.0 {
+            Color::from_rgba(0, 255, 100, 255)
+        } else if remaining > 5.0 {
+            Color::from_rgba(255, 255, 0, 255)
+        } else {
+            Color::from_rgba(255, 100, 0, 255)
+        };
+        draw_text(&format!("DRONE: {:.0}s", remaining), 20.0, drone_y, 16.0, drone_color);
     }
 
     // === TOP CENTER - CONTINENT PANEL ===

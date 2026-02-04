@@ -17,7 +17,7 @@ impl LevelConfig {
                 continent,
                 duration: 240.0,  // 4 minutes
                 difficulty_curve: 0.5,
-                checkpoint_interval: 50.0,
+                checkpoint_interval: 300.0,  // 7 checkpoints before boss
                 boss_spawn_time: 210.0,  // 3:30 mark
             },
             Continent::NorthAmerica => Self {

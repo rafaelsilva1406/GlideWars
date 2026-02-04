@@ -190,6 +190,20 @@ impl EnemyManager {
         false
     }
 
+    pub fn check_projectile_hit(&mut self, projectile_pos: Vec3) -> bool {
+        let hit_distance = 1.0;
+
+        for enemy in &mut self.enemies {
+            let distance = (enemy.position - projectile_pos).length();
+            if distance < hit_distance {
+                enemy.take_damage(20.0);
+                return true;
+            }
+        }
+
+        false
+    }
+
     /// Clear enemies within a radius around a position (used on checkpoint respawn)
     pub fn clear_around_position(&mut self, position: Vec3, radius: f32) {
         let initial_count = self.enemies.len();
@@ -198,6 +212,7 @@ impl EnemyManager {
             distance > radius
         });
         let cleared = initial_count - self.enemies.len();
+        #[cfg(debug_assertions)]
         if cleared > 0 {
             println!("Cleared {} enemies around checkpoint", cleared);
         }
@@ -206,6 +221,7 @@ impl EnemyManager {
     /// Pause spawning for a duration (used after respawn)
     pub fn pause_spawning(&mut self, duration: f32) {
         self.spawn_cooldown = duration;
+        #[cfg(debug_assertions)]
         println!("Enemy spawning paused for {:.1}s", duration);
     }
 }

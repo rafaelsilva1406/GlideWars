@@ -79,13 +79,14 @@ impl TutorialInstructions {
             "OBJECTIVES",
             &[
                 "Survive for 4 minutes to complete the tutorial",
+                "Fly through cyan rings for bonus points (+100)",
                 "Collect powerups (health, weapons, ammo)",
-                "Reach checkpoints every 50 units",
+                "Reach 7 checkpoints before the boss",
                 "Defeat the Training Drone boss at 3:30",
             ],
             Color::from_rgba(255, 215, 0, 255),
         );
-        y += 160.0;
+        y += 180.0;
 
         // === HAZARDS ===
         draw_instruction_panel(

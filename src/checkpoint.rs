@@ -69,6 +69,8 @@ impl CheckpointManager {
         self.checkpoints.push(checkpoint);
         self.active_checkpoint_index = self.checkpoints.len() - 1;
 
+        // Only show checkpoint messages in debug builds
+        #[cfg(debug_assertions)]
         println!(
             "Checkpoint {} created at Z={:.1}",
             self.active_checkpoint_index + 1,
@@ -123,6 +125,7 @@ impl CheckpointManager {
             player.restore_from_checkpoint(pos, health, weapon, ammo);
             *score = checkpoint.player_state.score;
 
+            #[cfg(debug_assertions)]
             println!(
                 "Respawned at checkpoint {} (Z={:.1})",
                 self.active_checkpoint_index + 1,

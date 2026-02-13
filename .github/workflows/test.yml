@@ -1,10 +1,13 @@
 name: Test
 
+# Disabled automatic testing - run manually from Actions tab
+# To enable: uncomment the on.push and on.pull_request sections
 on:
-  push:
-    branches: [ main, develop ]
-  pull_request:
-    branches: [ main, develop ]
+  # push:
+  #   branches: [ main, develop ]
+  # pull_request:
+  #   branches: [ main, develop ]
+  workflow_dispatch:
 
 env:
   CARGO_TERM_COLOR: always

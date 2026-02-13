@@ -2,14 +2,33 @@
 
 A retro-style 3D flight survival game built with Rust and macroquad. Navigate your glider through treacherous terrain across multiple continents, defeat bosses, and compete for high scores!
 
+## 🚀 Quick Start for New Players
+
+1. **Download & Run**: `cargo run --release`
+2. **Start Game**: Press any key at splash → START → Tutorial
+3. **Read Instructions**: Tutorial screen explains all controls
+4. **Basic Controls**: WASD to move, SHIFT to boost, SPACE to shoot
+5. **Objective**: Survive 4 minutes, collect powerups, defeat the boss
+6. **Full Guide**: See **[GAMEPLAY_GUIDE.md](GAMEPLAY_GUIDE.md)** for detailed walkthrough
+
+### What Makes Glide Wars Fun?
+- **Speed Boost**: Tactical energy management adds strategy
+- **Flying Rings**: Skill-based scoring for precise pilots
+- **Drone Companion**: AI sidekick helps clear enemies
+- **Boss Fights**: Dynamic battles that match your speed
+- **Atmospheric**: Clouds and air trails make you feel like you're really flying!
+
 ## Features
 
 ### Core Gameplay
-- **3D Flight Mechanics**: Smooth glider controls with realistic physics
+- **3D Flight Mechanics**: Smooth glider controls with realistic physics and speed boost
 - **7 Continents**: Tutorial + 6 unique continents with distinct themes
-- **Boss Battles**: Epic boss fights with multiple phases and attack patterns
-- **Checkpoint System**: Save progress and respawn at checkpoints
-- **Power-ups**: Collect weapons, health, and score multipliers
+- **Boss Battles**: Epic boss fights that stay in front of you with multiple phases
+- **Checkpoint System**: Save progress every 50-300 units and respawn safely
+- **Flying Rings**: Skill-based bonus scoring - fly through cyan rings for +100 points
+- **Power-ups**: Collect weapons, health, ammo, and drone companions
+- **Drone Companion**: AI sidekick that helps clear enemies (35% spawn rate, 30s duration)
+- **Atmospheric Effects**: Dynamic clouds and air trail particles for immersion
 - **Progressive Difficulty**: Each continent gets harder with unique challenges
 
 ### Technical Features
@@ -18,6 +37,13 @@ A retro-style 3D flight survival game built with Rust and macroquad. Navigate yo
 - **Retro Aesthetic**: 80s arcade-inspired visuals with modern 3D graphics
 - **Asset Management**: Themeable UI and continent-specific assets
 - **State Machine**: Robust game state management system
+
+## 📖 Documentation
+
+- **[Gameplay Guide](GAMEPLAY_GUIDE.md)**: Complete guide for new players with tips and strategies
+- **[Changelog](CHANGELOG.md)**: Version history and recent updates
+- **[Testing Guide](TESTING.md)**: Information about the testing infrastructure
+- **[Persistence System](PERSISTENCE.md)**: Details on save system and data storage
 
 ## Quick Start
 
@@ -53,7 +79,13 @@ cargo build --release --target wasm32-unknown-unknown
 
 ### Desktop
 - **Movement**: WASD or Arrow Keys
+  - **W/Up**: Climb (counter gravity)
+  - **S/Down**: Dive faster
+  - **A/Left**: Move left
+  - **D/Right**: Move right
+- **Speed Boost**: SHIFT or TAB (drains boost energy, 1.8x speed)
 - **Shoot**: Space
+- **Pause/Menu**: ESC
 - **Menu Navigation**: Enter/Space to confirm, ESC to go back
 
 ### Mobile/Touch
@@ -61,22 +93,34 @@ cargo build --release --target wasm32-unknown-unknown
 - **Fire Button**: Bottom-right corner to shoot
 - **Auto-detected**: Game automatically switches between desktop and mobile controls
 
+### Advanced Tips
+- **Boost Management**: Boost drains 50 energy/sec, recharges 20 energy/sec when not boosting
+- **Ring Collection**: Fly through cyan rings for bonus points - edge detection is forgiving
+- **Drone Companion**: Green glowing powerup spawns a friendly AI that shoots enemies for 30 seconds
+- **Air Trails**: Visual feedback when moving vertically - shows your air resistance
+
 ## Game Structure
 
 ### Continents
 1. **Tutorial**: Learn the basics (4 minutes)
-2. **North America**: Mountain terrain
-3. **South America**: Jungle environment
-4. **Europe**: Urban landscapes
-5. **Asia**: Eastern-inspired terrain
-6. **Africa**: Desert environment
-7. **Oceania**: Ocean-based challenges
+   - **7 checkpoints** before boss (every 300 units)
+   - Tutorial instructions screen explains all mechanics
+   - Boss spawns at 3:30 (Training Drone)
+   - Forgiving difficulty to learn controls
+2. **North America**: Mountain terrain (5 minutes)
+3. **South America**: Jungle environment (5 minutes)
+4. **Europe**: Urban landscapes (5 minutes)
+5. **Asia**: Eastern-inspired terrain (5 minutes)
+6. **Africa**: Desert environment (5 minutes)
+7. **Oceania**: Ocean-based challenges (5 minutes)
 
 Each continent features:
-- 5-minute gameplay duration
-- 3 checkpoints
-- Unique boss battle
+- Time-based progression (4-5 minutes)
+- Multiple checkpoints (tutorial: 7, others: varies)
+- Unique boss battle at ~90% mark
 - Progressive difficulty scaling
+- Flying rings for bonus scoring
+- Atmospheric clouds and visual effects
 
 ### Boss System
 - **7 Unique Bosses**: One per continent
@@ -178,28 +222,40 @@ For Azure deployment, configure these GitHub secrets:
 
 ## Roadmap
 
-### Completed (Phase 1-5, 8)
-- ✅ Core game architecture
-- ✅ State machine system
+### Completed ✅
+**Core Systems**
+- ✅ Core game architecture with state machine
 - ✅ Input management (desktop + mobile)
 - ✅ Level system with 7 continents
-- ✅ Checkpoint system with respawning
-- ✅ Boss battles with multiple phases
+- ✅ Checkpoint system with safe respawning
+- ✅ Boss battles with multiple phases and dynamic positioning
 - ✅ Asset management system
 - ✅ Docker containerization
 - ✅ Terraform infrastructure
 - ✅ CI/CD pipelines
 
-### Planned (Phase 3, 6, 7)
-- ⏳ Enhanced UI screens (splash, menus, level select)
-- ⏳ Rotating globe level selection
-- ⏳ Tutorial level implementation
-- ⏳ Parallax scrolling backgrounds
-- ⏳ Save system with persistence
-- ⏳ Session tracking and leaderboards
-- ⏳ Backend API for scores
+**Gameplay Features**
+- ✅ Speed boost system (SHIFT/TAB key)
+- ✅ Flying rings for skill-based scoring
+- ✅ Drone companion AI sidekick
+- ✅ Tutorial with comprehensive instructions
+- ✅ Magnetic powerup collection
+- ✅ Save system with high scores and best times
+
+**Visual Polish**
+- ✅ Atmospheric clouds (decorative, no collision)
+- ✅ Air trail particle effects
+- ✅ Enhanced UI screens (splash, menus, level select)
+- ✅ Clean production builds (debug messages hidden)
+
+### Planned ⏳
+- ⏳ Rotating globe level selection (currently 2D map)
+- ⏳ Parallax scrolling backgrounds per continent
+- ⏳ Session tracking and online leaderboards
+- ⏳ Backend API for global scores
 - ⏳ Sound effects and music
 - ⏳ Achievement system
+- ⏳ Additional powerups and weapons
 
 ## Contributing
 

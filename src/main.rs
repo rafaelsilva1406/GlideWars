@@ -16,6 +16,8 @@ mod ui;
 mod save_system;
 mod rings;
 mod drone_companion;
+mod clouds;
+mod air_particles;
 
 use player::Player;
 use terrain::TerrainManager;
@@ -32,6 +34,8 @@ use boss::{Boss, BossType};
 use ui::{SplashScreen, MainMenu, OptionsMenu, LevelSelectScreen, TutorialInstructions};
 use rings::RingManager;
 use drone_companion::DroneCompanion;
+use clouds::CloudManager;
+use air_particles::AirParticleSystem;
 use save_system::SaveManager;
 
 #[macroquad::main("Glide Wars")]
@@ -48,6 +52,8 @@ async fn main() {
     let mut powerups = PowerupManager::new();
     let mut rings = RingManager::new();
     let mut drone = DroneCompanion::new();
+    let mut clouds = CloudManager::new();
+    let mut air_particles = AirParticleSystem::new();
     let mut camera = GameCamera::new();
 
     // Level management
@@ -188,6 +194,8 @@ async fn main() {
                     checkpoint_manager.clear();
                     rings.reset();
                     drone.deactivate();
+                    clouds.clear();
+                    air_particles.clear();
                     boss = None;
                 }
 
@@ -228,6 +236,11 @@ async fn main() {
                 enemies.update(dt, &player);
                 rings.update(dt, &player);
                 drone.update(dt, &player);
+                clouds.update(dt, &player);
+
+                // Emit air particles when player moves vertically
+                air_particles.emit(player.position(), player.velocity().y);
+                air_particles.update(dt);
 
                 let score = scene_manager.scene_data().score;
                 let mut score_mut = score;
@@ -276,11 +289,13 @@ async fn main() {
                 // Render 3D scene
                 set_camera(camera.get_camera());
 
+                clouds.draw(); // Background layer
                 terrain.draw();
                 enemies.draw();
                 powerups.draw();
                 rings.draw();
                 drone.draw();
+                air_particles.draw(); // Air trail effects
                 player.draw();
 
                 // Render 2D UI
